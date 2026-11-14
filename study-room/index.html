@@ -1,0 +1,36 @@
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow"><title>單手研究報告</title><style>html,body,iframe{margin:0;width:100%;height:100%;border:0}body{font:18px system-ui}p{padding:1em}iframe{display:block}</style><p role="status">正在開啟單手研究報告…</p><script>
+(async () => {
+  const status = document.querySelector('p');
+  try {
+    const [hand, secret] = location.hash.slice(1).split('.');
+    if (!/^[a-z0-9]{20}$/.test(hand) || !/^[A-Za-z0-9_-]{43}$/.test(secret)) throw Error();
+    const keyBytes = Uint8Array.from(atob(secret.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0));
+    const key = await crypto.subtle.importKey('raw',keyBytes,'AES-GCM',false,['decrypt']);
+    const result = await fetch(hand + '.bin');
+    if (!result.ok) throw Error();
+    const bytes = new Uint8Array(await result.arrayBuffer());
+    const plain = await crypto.subtle.decrypt({name:'AES-GCM',iv:bytes.subarray(0,12)},key,bytes.subarray(12));
+    const stream = new Blob([plain]).stream().pipeThrough(new DecompressionStream('gzip'));
+    const report = JSON.parse(await new Response(stream).text());
+    let html = report.html;
+    for (const [path,[type,b64]] of Object.entries(report.assets)) {
+      const image = Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+      html = html.replaceAll(path,URL.createObjectURL(new Blob([image],{type})));
+    }
+    const frame = document.createElement('iframe');
+    frame.title = '單手研究報告';
+    frame.srcdoc = html;
+    frame.onload=()=>{
+      const doc=frame.contentDocument;
+      document.title=doc.title;
+      doc.addEventListener('click',event=>{
+        const anchor=event.target.closest('a[href^="#"]');
+        if (!anchor) return;
+        event.preventDefault();
+        doc.getElementById(anchor.hash.slice(1))?.scrollIntoView();
+      });
+    };
+    status.replaceWith(frame);
+  } catch { status.textContent = '無法開啟報告。請使用包含 # 後方內容的完整分享連結，再試一次。'; }
+})();
+</script></html>
